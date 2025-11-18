@@ -65,8 +65,19 @@ class NFCEGerarDanfe {
     itemHeight: number;
     doc: InstanceType<typeof PDFDocument>;
 
+    // ✨ NOVOS: Propriedades para customização de logo
+    logoPath?: string;
+    logoBuffer?: Buffer;
+    logoPosition: 'header-left' | 'header-right' | 'header-center';
+    logoWidth: number;
+    logoHeight: number;
+
+    // ✨ NOVOS: Propriedades para customização de descrição
+    maxDescriptionLength: number;
+    customItemHeight?: number;
+
     constructor(props: NFEGerarDanfeProps) {
-        const { data, chave, outputPath, pageWidth } = props;
+        const { data, chave, outputPath, pageWidth, logoPath, logoBuffer, logoPosition, logoWidth, logoHeight, maxDescriptionLength, itemLineHeight } = props;
 
         this.data = data;
         this.chave = chave.trim();
@@ -75,6 +86,17 @@ class NFCEGerarDanfe {
         this.qrcodePath = outputPath; // Caminho padrão
         this.documento = new ValidaCPFCNPJ(); // Inicialização correta
         this.protNFe = data.protNFe;
+
+        // ✨ NOVO: Inicializar propriedades de logo
+        this.logoPath = logoPath;
+        this.logoBuffer = logoBuffer;
+        this.logoPosition = logoPosition || 'header-right';
+        this.logoWidth = logoWidth || 100;
+        this.logoHeight = logoHeight || 50;
+
+        // ✨ NOVO: Inicializar propriedades de descrição customizável
+        this.maxDescriptionLength = maxDescriptionLength || 120;
+        this.customItemHeight = itemLineHeight;
 
         const nfeData = Array.isArray(data.NFe) ? data.NFe[0] : data.NFe;
         const { det, ide, emit, dest, total, transp, pag, infAdic } = nfeData.infNFe;
@@ -230,13 +252,52 @@ class NFCEGerarDanfe {
 
         const identificationJoined = `${this.emit.enderEmit.xLgr}, ${this.emit.enderEmit.nro}, ${this.emit.enderEmit.xBairro}, ${this.emit.enderEmit.UF}`
 
+        // ✨ NOVO: Adicionar logo se fornecido
+        let logoSpacing = 0;
+        if (this.logoPath || this.logoBuffer) {
+            try {
+                const logoSource = this.logoBuffer || this.logoPath!;
+
+                // Calcular posição baseado em logoPosition
+                let logoX: number;
+                const logoY = 5; // 5 pontos do topo
+
+                switch (this.logoPosition) {
+                    case 'header-left':
+                        logoX = 10;
+                        break;
+                    case 'header-center':
+                        logoX = (this.documentWidth - this.logoWidth) / 2;
+                        break;
+                    case 'header-right':
+                    default:
+                        logoX = this.documentWidth - this.logoWidth - 10;
+                        break;
+                }
+
+                this.doc.image(logoSource, logoX, logoY, {
+                    width: this.logoWidth,
+                    height: this.logoHeight,
+                    align: 'center'
+                });
+
+                // Adicionar espaçamento após logo
+                logoSpacing = this.logoHeight + 5;
+                this.doc.moveDown(logoSpacing / this.fontSize);
+            } catch (error) {
+                console.warn('Erro ao adicionar logo à DANFE:', error);
+                // Continuar sem logo em caso de erro
+            }
+        }
+
         /** IDENTIFICACAO EMITENTE */
         const _buildIdentificacaoEmit = () => {
+            const startY = logoSpacing > 0 ? logoSpacing + 2 : 2;
             const centeredPosEmit = this.centeredPos(`CNPJ: ${documento} ${this.emit.xNome}`)
             const centeredPosEnd = this.centeredPos(identificationJoined)
             const centeredPosText = this.centeredPos('Documento Auxiliar da Nota Fiscal de Consumidor Eletrônica')
 
-            this.doc.font('Arial').fontSize(this.fontSize).text(`CNPJ: ${documento} `, centeredPosEmit, 2, {
+            this.doc.font('Arial').fontSize(this.fontSize).text(`CNPJ: ${documento} `, centeredPosEmit, startY, {
                 lineBreak: false,
             })
                 .font('Arial-bold').text(this.emit.xNome)
@@ -296,14 +357,18 @@ class NFCEGerarDanfe {
             x += columnWidths.codigo + columnSpacing;
 
 
-            const descricao = item.prod.xProd.slice(0, 120); // Limite de 120 caracteres
+            // ✨ MODIFICADO: Usar maxDescriptionLength customizável
+            const descricao = item.prod.xProd.slice(0, this.maxDescriptionLength);
             const textWidth = this.doc.widthOfString(descricao);
             const lineCount = Math.ceil(textWidth / columnWidths.descricao);
+
+            // ✨ MODIFICADO: Usar customItemHeight se definido
+            const effectiveItemHeight = this.customItemHeight || this.itemHeight;
 
             const descricaoOptions = {
                 width: columnWidths.descricao,
                 align: 'left' as const,
-                height: this.itemHeight * lineCount
+                height: effectiveItemHeight * lineCount
             };
 
             this.doc.text(descricao, x, top, descricaoOptions);

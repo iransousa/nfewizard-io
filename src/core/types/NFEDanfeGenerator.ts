@@ -48,4 +48,39 @@ export type NFEGerarDanfeProps = {
      */
     // pageWidth: 226.772 | 158.74;
     pageWidth?: number;
+
+    /**
+     * @param {string} logoPath - Caminho para arquivo de logo (PNG/JPG) - OPCIONAL
+     */
+    logoPath?: string;
+
+    /**
+     * @param {Buffer} logoBuffer - Buffer da imagem do logo (alternativa ao logoPath) - OPCIONAL
+     */
+    logoBuffer?: Buffer;
+
+    /**
+     * @param {'header-left' | 'header-right' | 'header-center'} logoPosition - Posição do logo no cabeçalho - OPCIONAL (default: 'header-right')
+     */
+    logoPosition?: 'header-left' | 'header-right' | 'header-center';
+
+    /**
+     * @param {number} logoWidth - Largura do logo em pontos - OPCIONAL (default: 100)
+     */
+    logoWidth?: number;
+
+    /**
+     * @param {number} logoHeight - Altura do logo em pontos - OPCIONAL (default: 50)
+     */
+    logoHeight?: number;
+
+    /**
+     * @param {number} maxDescriptionLength - Número máximo de caracteres para descrição de produtos - OPCIONAL (default: 120)
+     */
+    maxDescriptionLength?: number;
+
+    /**
+     * @param {number} itemLineHeight - Altura da linha do item em pontos - OPCIONAL (default: calculado automaticamente)
+     */
+    itemLineHeight?: number;
 };
