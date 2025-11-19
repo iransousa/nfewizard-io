@@ -293,18 +293,24 @@ class NFCEGerarDanfe {
         /** IDENTIFICACAO EMITENTE */
         const _buildIdentificacaoEmit = () => {
             const startY = logoSpacing > 0 ? logoSpacing + 2 : 2;
-            const centeredPosEmit = this.centeredPos(`CNPJ: ${documento} ${this.emit.xNome}`)
+
+            // Calcular posições centralizadas para cada linha
+            const centeredPosRazao = this.centeredPos(this.emit.xNome)
+            const centeredPosCNPJ = this.centeredPos(`CNPJ: ${documento}`)
             const centeredPosEnd = this.centeredPos(identificationJoined)
             const centeredPosText = this.centeredPos('Documento Auxiliar da Nota Fiscal de Consumidor Eletrônica')
 
-            this.doc.font('Arial').fontSize(this.fontSize).text(`CNPJ: ${documento} `, centeredPosEmit, startY, {
-                lineBreak: false,
-            })
-                .font('Arial-bold').text(this.emit.xNome)
-                .fontSize(this.fontSize)
-                .font('Arial')
-                .text(identificationJoined, centeredPosEnd)
-                .text('Documento Auxiliar da Nota Fiscal de Consumidor Eletrônica', centeredPosText)
+            // Linha 1: Razão Social (negrito e centralizado)
+            this.doc.font('Arial-bold').fontSize(this.fontSize).text(this.emit.xNome, centeredPosRazao, startY)
+
+            // Linha 2: CNPJ (centralizado)
+            this.doc.font('Arial').fontSize(this.fontSize).text(`CNPJ: ${documento}`, centeredPosCNPJ)
+
+            // Linha 3: Endereço (centralizado)
+            this.doc.text(identificationJoined, centeredPosEnd)
+
+            // Linha 4: Texto do documento auxiliar (centralizado)
+            this.doc.text('Documento Auxiliar da Nota Fiscal de Consumidor Eletrônica', centeredPosText)
         }
 
         _buildIdentificacaoEmit();
@@ -316,11 +322,11 @@ class NFCEGerarDanfe {
         const startX = left;
         const tableTop = this.doc.y + top;
         const columnRatios = {
-            codigo: 0.15,
-            descricao: 0.40,
-            qtdeUn: 0.15,
-            unit: 0.15,
-            total: 0.15
+            codigo: 0.12,
+            descricao: 0.48,
+            qtdeUn: 0.13,
+            unit: 0.13,
+            total: 0.14
         };
         const columnSpacing = 0;
         const columnWidths = {
