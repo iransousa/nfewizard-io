@@ -90,9 +90,9 @@ class NFCEGerarDanfe {
         // ✨ NOVO: Inicializar propriedades de logo
         this.logoPath = logoPath;
         this.logoBuffer = logoBuffer;
-        this.logoPosition = logoPosition || 'header-right';
-        this.logoWidth = logoWidth || 100;
-        this.logoHeight = logoHeight || 50;
+        this.logoPosition = logoPosition || 'header-center';
+        this.logoWidth = logoWidth || 60;
+        this.logoHeight = logoHeight || 40;
 
         // ✨ NOVO: Inicializar propriedades de descrição customizável
         this.maxDescriptionLength = maxDescriptionLength || 120;
