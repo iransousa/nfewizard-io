@@ -116,12 +116,19 @@ class NFCEGerarDanfe {
             this.enviada = true;
         }
 
-        function calculateHeight(itemsLength: number, itemHeight: number) {
-            const headerHeight = 34.22975675056; // Altura do cabeçalho
-            const footerHeight = 170; // Altura do rodapé -> 34.22975675056
+        function calculateHeight(itemsLength: number, itemHeight: number, hasLogo: boolean, logoHeight: number) {
+            const baseHeaderHeight = 80; // Altura do cabeçalho (aumentado)
+            const logoSpacing = hasLogo ? logoHeight + 10 : 0; // Logo + espaçamento
+            const headerHeight = baseHeaderHeight + logoSpacing;
+            const footerHeight = 200; // Altura do rodapé (aumentado)
+            const totaisHeight = 100; // Espaço para totais e formas de pagamento
 
-            // Altura total é a soma das alturas dos itens + cabeçalho + rodapé
-            return headerHeight + footerHeight + (itemsLength * itemHeight) + 5;
+            // Estimar altura dos itens considerando possíveis quebras de linha
+            // Cada item pode ocupar até 4 linhas (descrição longa)
+            const itemsHeight = itemsLength * itemHeight * 4;
+
+            // Altura total com margem generosa
+            return headerHeight + itemsHeight + totaisHeight + footerHeight + 100;
         }
 
         function calculateFontSize(width: number) {
@@ -141,7 +148,8 @@ class NFCEGerarDanfe {
         this.fontSize = fontSize;
 
         this.itemHeight = fontSize * 1.116;
-        const pageHeight = calculateHeight(itensLength, this.itemHeight);
+        const hasLogo = !!(logoPath || logoBuffer);
+        const pageHeight = calculateHeight(itensLength, this.itemHeight, hasLogo, this.logoHeight);
 
         const fontPath = path.resolve(baseDir, fontDir);
         const fontPathBold = path.resolve(baseDir, fontDirBold);
@@ -260,7 +268,7 @@ class NFCEGerarDanfe {
 
                 // Calcular posição baseado em logoPosition
                 let logoX: number;
-                const logoY = 5; // 5 pontos do topo
+                const logoY = 10; // 10 pontos do topo para não cortar
 
                 switch (this.logoPosition) {
                     case 'header-left':
@@ -282,7 +290,7 @@ class NFCEGerarDanfe {
                 });
 
                 // Adicionar espaçamento após logo
-                logoSpacing = this.logoHeight + 5;
+                logoSpacing = this.logoHeight + 10;
                 this.doc.moveDown(logoSpacing / this.fontSize);
             } catch (error) {
                 console.warn('Erro ao adicionar logo à DANFE:', error);
@@ -292,25 +300,26 @@ class NFCEGerarDanfe {
 
         /** IDENTIFICACAO EMITENTE */
         const _buildIdentificacaoEmit = () => {
-            const startY = logoSpacing > 0 ? logoSpacing + 2 : 2;
-
-            // Calcular posições centralizadas para cada linha
-            const centeredPosRazao = this.centeredPos(this.emit.xNome)
-            const centeredPosCNPJ = this.centeredPos(`CNPJ: ${documento}`)
-            const centeredPosEnd = this.centeredPos(identificationJoined)
-            const centeredPosText = this.centeredPos('Documento Auxiliar da Nota Fiscal de Consumidor Eletrônica')
+            let currentY = logoSpacing > 0 ? logoSpacing + 2 : 2;
 
             // Linha 1: Razão Social (negrito e centralizado)
-            this.doc.font('Arial-bold').fontSize(this.fontSize).text(this.emit.xNome, centeredPosRazao, startY)
+            const centeredPosRazao = this.centeredPos(this.emit.xNome)
+            this.doc.font('Arial-bold').fontSize(this.fontSize).text(this.emit.xNome, centeredPosRazao, currentY)
+            currentY = this.doc.y + 2; // Atualiza Y após o texto
 
             // Linha 2: CNPJ (centralizado)
-            this.doc.font('Arial').fontSize(this.fontSize).text(`CNPJ: ${documento}`, centeredPosCNPJ)
+            const centeredPosCNPJ = this.centeredPos(`CNPJ: ${documento}`)
+            this.doc.font('Arial').fontSize(this.fontSize).text(`CNPJ: ${documento}`, centeredPosCNPJ, currentY)
+            currentY = this.doc.y + 2; // Atualiza Y após o texto
 
             // Linha 3: Endereço (centralizado)
-            this.doc.text(identificationJoined, centeredPosEnd)
+            const centeredPosEnd = this.centeredPos(identificationJoined)
+            this.doc.text(identificationJoined, centeredPosEnd, currentY)
+            currentY = this.doc.y + 2; // Atualiza Y após o texto
 
             // Linha 4: Texto do documento auxiliar (centralizado)
-            this.doc.text('Documento Auxiliar da Nota Fiscal de Consumidor Eletrônica', centeredPosText)
+            const centeredPosText = this.centeredPos('Documento Auxiliar da Nota Fiscal de Consumidor Eletrônica')
+            this.doc.text('Documento Auxiliar da Nota Fiscal de Consumidor Eletrônica', centeredPosText, currentY)
         }
 
         _buildIdentificacaoEmit();
@@ -354,66 +363,73 @@ class NFCEGerarDanfe {
             const valUnit = parseFloat(String(item.prod.vUnCom || item.prod.vUnTrib || '0')).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             const valLiq = parseFloat(String(item.prod.vProd || '0')).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+            // Salvar posição Y inicial
+            const startY = top;
             let x = startX;
+
+            // Código do produto
             this.doc.font('Arial').fontSize(this.fontSize).text(item.prod.cProd, x, top, {
                 width: columnWidths.codigo,
+                align: 'left' as const,
+                lineBreak: false
+            });
+            x += columnWidths.codigo + columnSpacing;
+
+            // Descrição do produto (pode ter múltiplas linhas)
+            const descricao = item.prod.xProd.slice(0, this.maxDescriptionLength);
+            this.doc.text(descricao, x, top, {
+                width: columnWidths.descricao,
                 align: 'left' as const
             });
 
-            x += columnWidths.codigo + columnSpacing;
+            // Calcular altura real usada pela descrição
+            const descYEnd = this.doc.y;
+            const descHeight = descYEnd - startY;
 
-
-            // ✨ MODIFICADO: Usar maxDescriptionLength customizável
-            const descricao = item.prod.xProd.slice(0, this.maxDescriptionLength);
-            const textWidth = this.doc.widthOfString(descricao);
-            const lineCount = Math.ceil(textWidth / columnWidths.descricao);
-
-            // ✨ MODIFICADO: Usar customItemHeight se definido
-            const effectiveItemHeight = this.customItemHeight || this.itemHeight;
-
-            const descricaoOptions = {
-                width: columnWidths.descricao,
-                align: 'left' as const,
-                height: effectiveItemHeight * lineCount
-            };
-
-            this.doc.text(descricao, x, top, descricaoOptions);
+            // Posicionar os outros campos alinhados ao topo da linha
             x += columnWidths.descricao + columnSpacing;
 
-            this.doc.text(`${quant} ${item.prod.uCom}`, x, top, {
+            this.doc.text(`${quant} ${item.prod.uCom}`, x, startY, {
                 width: columnWidths.qtdeUn,
-                align: 'right'
+                align: 'right',
+                lineBreak: false
             });
             x += columnWidths.qtdeUn + columnSpacing;
 
-            this.doc.text(valUnit, x, top, {
+            this.doc.text(valUnit, x, startY, {
                 width: columnWidths.unit,
-                align: 'right'
+                align: 'right',
+                lineBreak: false
             });
             x += columnWidths.unit + columnSpacing;
 
-            this.doc.text(valLiq, x, top, {
+            this.doc.text(valLiq, x, startY, {
                 width: columnWidths.total,
-                align: 'right'
+                align: 'right',
+                lineBreak: false
             });
 
-
-            return descricaoOptions.height;
+            // Retornar a altura real usada
+            return Math.max(descHeight, this.itemHeight);
         };
         header(tableTop);
         let y = tableTop + this.itemHeight;
         if (this.det instanceof Array) {
             this.det.forEach((prod) => {
-                row(y, prod);
-                y += this.itemHeight;
+                const rowHeight = row(y, prod);
+                y += rowHeight + 2; // Altura real + pequeno espaçamento
             });
         } else {
-            row(y, this.det);
+            const rowHeight = row(y, this.det);
+            y += rowHeight + 2;
         }
+
+        // Atualizar posição Y do documento para o final da tabela
+        this.doc.y = y;
     }
     _buildTotais() {
 
-        let tableTop = this.doc.y + 5;
+        let tableTop = this.doc.y + 10; // Aumentado de 5 para 10 para dar mais espaço
 
         const quantidadeTotalDeItens = Array.isArray(this.det) ? this.det.length : 1;
 
@@ -479,47 +495,43 @@ class NFCEGerarDanfe {
             });
         }
 
-        tableTop += this.itemHeight + 2;
+        tableTop += this.itemHeight + 4;
 
-        this.doc.font('Arial').text('FORMA PAGAMENTO', 2, tableTop);
+        // Cabeçalhos "FORMA PAGAMENTO" e "VALOR PAGO R$"
+        this.doc.font('Arial').text('FORMA PAGAMENTO', 2, tableTop, { lineBreak: false });
+        this.doc.text('VALOR PAGO R$', this.calculaPosicao('VALOR PAGO R$'), tableTop, {
+            align: 'right',
+            lineBreak: false
+        });
 
-        // Tipos
+        tableTop += this.itemHeight;
 
-        let topTiposPag = tableTop;
+        // Renderizar tipos de pagamento e valores na mesma linha
         if (Array.isArray(this.pag.detPag)) {
             for (let pagto of this.pag.detPag) {
                 if (!pagto.xPag) pagto.xPag = getDesTipoPag(pagto.tPag);
-                this.doc.text(pagto.xPag || 'Não informado', 2, topTiposPag + this.itemHeight);
-                topTiposPag += this.itemHeight;
+                const val = parseFloat(pagto.vPag).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+
+                this.doc.text(pagto.xPag || 'Não informado', 2, tableTop, { lineBreak: false });
+                this.doc.text(val, this.calculaPosicao(val), tableTop, {
+                    align: 'right',
+                    lineBreak: false
+                });
+                tableTop += this.itemHeight;
             }
         } else {
             if (!this.pag.detPag.xPag) this.pag.detPag.xPag = getDesTipoPag(this.pag.detPag.tPag);
-            this.doc.text(this.pag.detPag.xPag || 'Não informado', 2, topTiposPag + this.itemHeight);
-        }
+            const val = parseFloat(this.pag.detPag.vPag).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
 
-        this.doc.text('VALOR PAGO R$', this.calculaPosicao('VALOR PAGO R$'), tableTop, {
-            align: 'right',
-        });
-
-        // Valores
-        let topValPags = tableTop;
-        if (Array.isArray(this.pag.detPag)) {
-            for (let pagto of this.pag.detPag) {
-                const val = parseFloat(pagto.vPag).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 3 })
-                this.doc.text(val, this.calculaPosicao(val), topValPags + this.itemHeight, {
-                    align: 'right',
-                });
-                topValPags += this.itemHeight;
-            }
-        } else {
-            const val = parseFloat(this.pag.detPag.vPag).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 3 })
-            this.doc.text(val, this.calculaPosicao(val), topValPags + this.itemHeight, {
+            this.doc.text(this.pag.detPag.xPag || 'Não informado', 2, tableTop, { lineBreak: false });
+            this.doc.text(val, this.calculaPosicao(val), tableTop, {
                 align: 'right',
+                lineBreak: false
             });
+            tableTop += this.itemHeight;
         }
 
-        tableTop = topValPags;
-        tableTop += 2 * this.itemHeight;
+        tableTop += 4;
 
         let valTroco = 0;
         if (Array.isArray(this.pag.detPag)) {
@@ -530,38 +542,46 @@ class NFCEGerarDanfe {
 
         const troco = valTroco.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 3 })
 
-        this.doc.text('Troco R$', 2, tableTop);
+        this.doc.text('Troco R$', 2, tableTop, { lineBreak: false });
         this.doc.text(troco, this.calculaPosicao(troco), tableTop, {
             align: 'right',
+            lineBreak: false
         });
 
+        // Atualizar posição Y do documento
+        this.doc.y = tableTop + this.itemHeight;
     }
 
     _buildFooter(qrCodeBuffer: Buffer) {
-        let tableTop = this.doc.y + 5;
+        let tableTop = this.doc.y + 8;
 
         this.doc.font('Arial-bold').text('Consulte pela Chave de Acesso em', 0, tableTop, {
-            align: 'center'
+            align: 'center',
+            lineBreak: false
         });
         tableTop += this.itemHeight;
 
         this.doc.font('Arial').text(this.infNFeSupl?.urlChave || '', 0, tableTop, {
-            align: 'center'
+            align: 'center',
+            lineBreak: false
         });
         tableTop += this.itemHeight;
 
         this.doc.text(this.protNFe?.infProt.chNFe || '', 0, tableTop, {
-            align: 'center'
+            align: 'center',
+            lineBreak: false
         });
 
-        tableTop += this.itemHeight;
-        // const filePath = path.resolve(baseDir, this.qrcodePath);
-        // this.doc.image(`${filePath}/qrcode.png`, 2, tableTop, { width: 70.87, height: 70.87 });
-        this.doc.image(qrCodeBuffer, 2, tableTop, { width: 70.87, height: 70.87 });
+        tableTop += this.itemHeight + 2;
 
+        // Renderizar QR Code à esquerda
+        const qrCodeSize = 70.87;
+        const qrCodeX = 10;
+        this.doc.image(qrCodeBuffer, qrCodeX, tableTop, { width: qrCodeSize, height: qrCodeSize });
 
-        tableTop += 4;
-        let topBeforeQrCode = tableTop;
+        // Informações ao lado do QR Code
+        const infoX = qrCodeX + qrCodeSize + 5;
+        let infoY = tableTop;
 
         const CNPJCPF = this.documento.mascaraCnpjCpf(
             this.dest?.CNPJCPF || this.dest?.CNPJ || this.dest?.CPF || this.dest?.idEstrangeiro || ''
@@ -580,25 +600,39 @@ class NFCEGerarDanfe {
             UF && `${UF}`
         ].filter(Boolean);
         const enderecoStr = enderecoPartes.join(', ');
+
         if (CNPJCPF && CNPJCPF !== '') {
-            this.doc.font('Arial-bold')
-                .text(`CONSUMIDOR - DOC ${CNPJCPF}`, 75, tableTop, {
+            this.doc.font('Arial-bold').fontSize(this.fontSize)
+                .text(`CONSUMIDOR - DOC ${CNPJCPF}`, infoX, infoY, {
                     align: 'left',
-                    lineGap: 1
-                })
-                .font('Arial')
-                .text(` - ${xNome}`, {
-                    lineGap: 1
+                    width: this.documentWidth - infoX - 10,
+                    lineBreak: false
                 });
-            tableTop = this.doc.y + 4;
-            this.doc.text(enderecoStr, 75, tableTop);
-            tableTop = this.doc.y + 8;
-        } else {
-            this.doc.text('CONSUMIDOR NÃO IDENTIFICADO', 75, tableTop, {
+            infoY += this.itemHeight;
+
+            this.doc.font('Arial').text(xNome, infoX, infoY, {
                 align: 'left',
+                width: this.documentWidth - infoX - 10,
+                lineBreak: false
             });
-            tableTop = this.doc.y + 8;
+            infoY += this.itemHeight;
+
+            this.doc.text(enderecoStr, infoX, infoY, {
+                align: 'left',
+                width: this.documentWidth - infoX - 10
+            });
+            infoY = this.doc.y;
+        } else {
+            this.doc.font('Arial').text('CONSUMIDOR NÃO IDENTIFICADO', infoX, infoY, {
+                align: 'left',
+                width: this.documentWidth - infoX - 10,
+                lineBreak: false
+            });
+            infoY += this.itemHeight;
         }
+
+        // Atualizar tableTop para após o QR Code
+        tableTop = Math.max(tableTop + qrCodeSize, infoY) + 4;
 
 
         const data = parseISO(this.ide.dhEmi);
@@ -610,30 +644,41 @@ class NFCEGerarDanfe {
             dtaAut = format(dataAut, 'dd/MM/yyyy HH:mm:ss');
         }
 
-        this.doc.font('Arial-bold')
-            .text(`NFC-e nº ${this.ide.nNF} Série ${this.ide.serie} ${dtaEmi}`, 75, tableTop, {
+        // Informações da NFC-e
+        this.doc.font('Arial-bold').fontSize(this.fontSize)
+            .text(`NFC-e nº ${this.ide.nNF} Série ${this.ide.serie} ${dtaEmi}`, 10, tableTop, {
                 align: 'left',
-                lineGap: 1
-            })
-            .text('Protocolo de autorização: ', {
-                continued: true,
-                lineGap: 1,
-            })
-            .font('Arial')
-            .text(this.protNFe?.infProt.nProt || '123')
-            .font('Arial-bold')
-            .text('Data de autorização ', {
-                continued: true,
-                lineGap: 1,
-            })
-            .font('Arial')
-            .text(dtaAut);
+                lineBreak: false
+            });
+        tableTop += this.itemHeight;
 
-        tableTop = this.doc.y + 20;
-        topBeforeQrCode += 70.87
-        this.doc.text(`Tributos Totais Incidentes (Lei Federal 12.741/2012): R$ ${parseFloat(this.total.ICMSTot.vTotTrib || '0').toFixed(2)}`, 0, topBeforeQrCode, {
-            align: 'center'
-        });
+        this.doc.text('Protocolo de autorização: ', 10, tableTop, {
+            continued: true,
+            lineBreak: false
+        })
+        .font('Arial')
+        .text(this.protNFe?.infProt.nProt || '123', { lineBreak: false });
+        tableTop += this.itemHeight;
+
+        this.doc.font('Arial-bold')
+            .text('Data de autorização ', 10, tableTop, {
+                continued: true,
+                lineBreak: false
+            })
+            .font('Arial')
+            .text(dtaAut, { lineBreak: false });
+        tableTop += this.itemHeight + 4;
+
+        // Tributos totais
+        this.doc.font('Arial').text(
+            `Tributos Totais Incidentes (Lei Federal 12.741/2012): R$ ${parseFloat(this.total.ICMSTot.vTotTrib || '0').toFixed(2)}`,
+            0,
+            tableTop,
+            {
+                align: 'center',
+                lineBreak: false
+            }
+        );
     }
 
     async generatePDF(exibirMarcaDaguaDanfe?: boolean) {

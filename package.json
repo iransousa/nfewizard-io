@@ -24,6 +24,7 @@
     "dev": "tsx src/testes.ts",
     "debug": "tsx src/debug.ts",
     "test": "jest",
+    "test:nfce": "tsx test-output/test-nfce-danfe.ts",
     "clean": "rm -rf dist",
     "build": "npm run clean && rollup -c",
     "build:idle": "node build.mjs",
